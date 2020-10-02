@@ -738,7 +738,7 @@ __main_quit:
 #ifdef CONFIG_PID_FILE_FORMAT
     {
         char cmd[255];
-        sprintf(cmd, "rm  " CONFIG_PID_FILE_FORMAT, profile.usbnet_adapter);
+        sprintf(cmd, "rm  " CONFIG_PID_FILE_FORMAT, profile->usbnet_adapter);
         system(cmd);
     }
 #endif
