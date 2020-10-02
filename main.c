@@ -117,7 +117,7 @@ __daemon_quit:
 }
 
 static void ql_enter_daemon(int signo) {
-    if (daemon_pipe_fd[1] > 0)
+    if (daemon_pipe_fd[1] > 0) {
         if (signo) {
             write(daemon_pipe_fd[1], &signo, sizeof(signo));
             sleep(1);
@@ -126,6 +126,7 @@ static void ql_enter_daemon(int signo) {
         daemon_pipe_fd[1] = -1;
         setsid();
     }
+}
 #endif
 
 //UINT ifc_get_addr(const char *ifname);
