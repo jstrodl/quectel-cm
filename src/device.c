@@ -30,7 +30,7 @@
 #include <pthread.h>
 
 #include "QMIThread.h"
-#include "ethtool-copy.h"
+#include "ethtool_copy.h"
 
 #define CM_MAX_PATHLEN 256
 
