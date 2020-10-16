@@ -1,5 +1,5 @@
 /******************************************************************************
-  @file    main.c
+  @file    quectel_cm.c
   @brief   The entry program.
 
   DESCRIPTION
@@ -9,7 +9,7 @@
   None.
 
   ---------------------------------------------------------------------------
-  Copyright (c) 2016 -2020 Quectel Wireless Solution, Co., Ltd.  All Rights Reserved.
+  Copyright (c) 2016 - 2020 Quectel Wireless Solution, Co., Ltd.  All Rights Reserved.
   Quectel Wireless Solution Proprietary and Confidential.
   ---------------------------------------------------------------------------
 ******************************************************************************/
@@ -21,12 +21,15 @@
 #include <dirent.h>
 
 #include "util.h"
-//#define CONFIG_EXIT_WHEN_DIAL_FAILED
-//#define CONFIG_BACKGROUND_WHEN_GET_IP
-//#define CONFIG_PID_FILE_FORMAT "/var/run/quectel-CM-%s.pid" //for example /var/run/quectel-CM-wwan0.pid
 
+// TODO (2020016-js) use bit vector instead of int values for flags
 int debug_qmi = 0;
+int exit_on_dial_failed = 0;
+int daemon_mode = 0;
+const char *pid_file = NULL;
 int main_loop = 0;
+
+
 int qmidevice_control_fd[2];
 static int signal_control_fd[2];
 
@@ -37,7 +40,6 @@ extern int ql_get_netcard_driver_info(const char*);
 extern int ql_capture_usbmon_log(PROFILE_T *profile, const char *log_path);
 extern void ql_stop_usbmon_log(PROFILE_T *profile);
 
-#ifdef CONFIG_BACKGROUND_WHEN_GET_IP
 static int daemon_pipe_fd[2];
 
 static void ql_prepare_daemon(void) {
@@ -127,7 +129,6 @@ static void ql_enter_daemon(int signo) {
         setsid();
     }
 }
-#endif
 
 //UINT ifc_get_addr(const char *ifname);
 static int s_link = -1;
@@ -147,15 +148,16 @@ static void usbnet_link_change(int link, PROFILE_T *profile) {
         udhcpc_stop(profile);
     }
 
-#ifdef CONFIG_BACKGROUND_WHEN_GET_IP
-    if (link && daemon_pipe_fd[1] > 0) {
-        int timeout = 6;
-        while (timeout-- /*&& ifc_get_addr(profile->usbnet_adapter) == 0*/) {
-            sleep(1);
+    if (daemon_mode)
+    {
+        if (link && daemon_pipe_fd[1] > 0) {
+            int timeout = 6;
+            while (timeout-- /*&& ifc_get_addr(profile->usbnet_adapter) == 0*/) {
+                sleep(1);
+            }
+            ql_enter_daemon(SIG_EVENT_START);
         }
-        ql_enter_daemon(SIG_EVENT_START);
     }
-#endif
 }
 
 static int check_ipv4_address(PROFILE_T *now_profile) {
@@ -318,19 +320,22 @@ pthread_t gQmiThreadID;
 
 static int usage(const char *progname) {
      dbg_time("Usage: %s [options]", progname);
-     dbg_time("-s [apn [user password auth]]          Set apn/user/password/auth get from your network provider");
-     dbg_time("-p pincode                             Verify sim card pin if sim card is locked");
-     dbg_time("-f logfilename                         Save log message of this program to file");
-     dbg_time("-u usbmonlog filename                  Save usbmon log of this program to file");
-     dbg_time("-i interface                           Specify network interface(default auto-detect)");
-     dbg_time("-4                                     IPv4 protocol");
-     dbg_time("-6                                     IPv6 protocol");
-     dbg_time("-m muxID                               Specify muxid when set multi-pdn data connection.");
-     dbg_time("-n channelID                           Specify channelID when set multi-pdn data connection(default 1).");
-	 dbg_time("-k channelID                           Send SIGINT to quectel-CM which multi-pdn is channelID.");
+     dbg_time("-s [apn [user password auth]]          Set apn/user/password/auth get from your network provider.");
+     dbg_time("-p pincode                             Verify SIM card pin if SIM card is locked.");
+     dbg_time("-D                                     Daemon mode. Enter background after connection is established.");
+     dbg_time("-A                                     Abort on dial failure.");
+     dbg_time("-P pid-filename                        Save PID of this program to file. (Default: do not save)");
+     dbg_time("-f log-filename                        Save log message of this program to file.");
+     dbg_time("-u usbmonlog-filename                  Save usbmon log of this program to file.");
+     dbg_time("-i interface                           Specify network interface. (Default: auto-detect)");
+     dbg_time("-4                                     Enable IPv4 protocol.");
+     dbg_time("-6                                     Enable IPv6 protocol.");
+     dbg_time("-m mux-id                              Specify mux id when set multi pdn data connection.");
+     dbg_time("-n channel-id                          Specify channel id when set multi pdn data connection. (Default: 1)");
+	 dbg_time("-k channel-id                          Send SIGINT to quectel-CM which multi-pdn is channel id.");
      dbg_time("-r                                     Detach and attach kernel driver before open device.");
-     dbg_time("-b                                     enable network interface bridge function(default 0).");
-     dbg_time("[Examples]");
+     dbg_time("-b                                     Enable network interface bridge function. (Default: off)");
+     dbg_time("Examples:");
      dbg_time("Example 1: %s ", progname);
      dbg_time("Example 2: %s -s 3gnet ", progname);
      dbg_time("Example 3: %s -s 3gnet carl 1234 0 -p 1234 -f gobinet_log.txt", progname);
@@ -358,9 +363,10 @@ int qmi_main(PROFILE_T *profile)
     /* timer routine */
     signal(SIGALRM, ql_sigaction);
 
-#ifdef CONFIG_BACKGROUND_WHEN_GET_IP
-    ql_prepare_daemon();
-#endif
+    if (daemon_mode)
+    {
+        ql_prepare_daemon();
+    }
 
 //sudo apt-get install udhcpc
 //sudo apt-get remove ModemManager
@@ -372,12 +378,12 @@ __main_loop:
 
     /* try to recreate FDs*/
     if (socketpair( AF_LOCAL, SOCK_STREAM, 0, signal_control_fd) < 0 ) {
-        dbg_time("%s Faild to create main_control_fd: %d (%s)", __func__, errno, strerror(errno));
+        dbg_time("%s faild to create main_control_fd: %d (%s)", __func__, errno, strerror(errno));
         return -1;
     }
 
     if ( socketpair( AF_LOCAL, SOCK_STREAM, 0, qmidevice_control_fd ) < 0 ) {
-        dbg_time("%s Failed to create thread control socket pair: %d (%s)", __func__, errno, strerror(errno));
+        dbg_time("%s failed to create thread control socket pair: %d (%s)", __func__, errno, strerror(errno));
         return 0;
     }
 
@@ -420,18 +426,18 @@ __main_loop:
         kill_brothers(profile->qmichannel);
 
     if (pthread_create( &gQmiThreadID, 0, profile->qmi_ops->read, (void *)profile) != 0) {
-        dbg_time("%s Failed to create QMIThread: %d (%s)", __func__, errno, strerror(errno));
+        dbg_time("%s failed to create QMIThread: %d (%s)", __func__, errno, strerror(errno));
             return 0;
     }
 
     if ((read(qmidevice_control_fd[0], &triger_event, sizeof(triger_event)) != sizeof(triger_event))
         || (triger_event != RIL_INDICATE_DEVICE_CONNECTED)) {
-        dbg_time("%s Failed to init QMIThread: %d (%s)", __func__, errno, strerror(errno));
+        dbg_time("%s failed to init QMIThread: %d (%s)", __func__, errno, strerror(errno));
         return 0;
     }
 
     if (profile->qmi_ops->init && profile->qmi_ops->init(profile)) {
-        dbg_time("%s Failed to qmi init: %d (%s)", __func__, errno, strerror(errno));
+        dbg_time("%s failed to qmi init: %d (%s)", __func__, errno, strerror(errno));
             return 0;
     }
 
@@ -469,13 +475,12 @@ __main_loop:
 
     send_signo_to_main(SIG_EVENT_CHECK);
 
-#ifdef CONFIG_PID_FILE_FORMAT
+    if (pid_file != NULL)
     {
         char cmd[255];
-        sprintf(cmd, "echo %d > " CONFIG_PID_FILE_FORMAT, getpid(), profile->usbnet_adapter);
+        sprintf(cmd, "echo %d > %s-%s.pid", getpid(), pid_file, profile->usbnet_adapter);
         system(cmd);
     }
-#endif
 
     while (1)
     {
@@ -572,9 +577,11 @@ __main_loop:
                                 dbg_time("try to requestSetupDataCall %ld second later", SetupCallAllowTime);
                                 alarm(SetupCallAllowTime);
                                 SetupCallAllowTime = SetupCallAllowTime*1000 + clock_msec();
-#ifdef CONFIG_EXIT_WHEN_DIAL_FAILED
-                                send_signo_to_main(SIG_EVENT_STOP);
-#endif
+
+                                if (exit_on_dial_failed)
+                                {
+                                    send_signo_to_main(SIG_EVENT_STOP);
+                                }
                             }
                             else if (IPv4ConnectionStatus ==  QWDS_PKT_DATA_CONNECTED || IPv6ConnectionStatus ==  QWDS_PKT_DATA_CONNECTED) {
                                 SetupCallFail = 0;
@@ -716,6 +723,7 @@ __main_loop:
                             }
                         }
                     	break;
+                        
                         default:
                         break;
                     }
@@ -735,13 +743,12 @@ __main_quit:
     close(qmidevice_control_fd[1]);
     dbg_time("%s exit", __func__);
 
-#ifdef CONFIG_PID_FILE_FORMAT
+    if (pid_file != NULL)
     {
         char cmd[255];
-        sprintf(cmd, "rm  " CONFIG_PID_FILE_FORMAT, profile->usbnet_adapter);
+        sprintf(cmd, "rm  %s-%s.pid" , pid_file, profile->usbnet_adapter);
         system(cmd);
     }
-#endif
 
     return 0;
 }
@@ -793,6 +800,19 @@ int main(int argc, char *argv[])
             case 'p':
                 if (has_more_argv())
                     profile.pincode = argv[opt++];
+            break;
+
+            case 'D':
+                daemon_mode = 1;
+            break;
+
+            case 'E':
+                exit_on_dial_failed = 1;
+            break;
+
+            case 'P':
+                if (has_more_argv())
+                    pid_file = argv[opt++];
             break;
 
             case 'n':

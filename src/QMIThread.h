@@ -38,9 +38,9 @@
 #include "MPQMUX.h"
 #include "util.h"
 
-#define DEVICE_CLASS_UNKNOWN           0
-#define DEVICE_CLASS_CDMA              1
-#define DEVICE_CLASS_GSM               2
+#define DEVICE_CLASS_UNKNOWN            0
+#define DEVICE_CLASS_CDMA               1
+#define DEVICE_CLASS_GSM                2
 
 #define WWAN_DATA_CLASS_NONE            0x00000000
 #define WWAN_DATA_CLASS_GPRS            0x00000001
@@ -49,8 +49,8 @@
 #define WWAN_DATA_CLASS_HSDPA           0x00000008
 #define WWAN_DATA_CLASS_HSUPA           0x00000010
 #define WWAN_DATA_CLASS_LTE             0x00000020
-#define WWAN_DATA_CLASS_5G_NSA        0x00000040
-#define WWAN_DATA_CLASS_5G_SA        0x00000080
+#define WWAN_DATA_CLASS_5G_NSA          0x00000040
+#define WWAN_DATA_CLASS_5G_SA           0x00000080
 #define WWAN_DATA_CLASS_1XRTT           0x00010000
 #define WWAN_DATA_CLASS_1XEVDO          0x00020000
 #define WWAN_DATA_CLASS_1XEVDO_REVA     0x00040000

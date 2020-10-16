@@ -1,9 +1,7 @@
 /**  
-  @file
-  util.h
+  @file util.h
 
-  @brief
-  This file provides the definitions, and declares some common APIs for list-algorithm.
+  @brief This file provides the definitions, and declares some common APIs for list-algorithm.
 
  */
 
